@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>Prime Inventory</title>
+  <title>Moses Inventory</title>
+  <link rel="icon" href="https://static.tildacdn.com/tild3831-6336-4662-a137-373164346230/favicon_6.ico" />
   <style>
     *{box-sizing:border-box}
     body{margin:0;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f7fb;color:#0d1b3e}
@@ -50,7 +51,7 @@
   </style>
 </head>
 <body>
-<div id="root"><div style="padding:24px;font-family:Arial">Загрузка Prime Inventory...</div></div>
+<div id="root"><div style="padding:24px;font-family:Arial">Загрузка Moses Inventory...</div></div>
 
 <script>
 let tg = null;
@@ -103,9 +104,9 @@ const defaultProducts = [
 const state = {
   screen: "home",
   warehouse: "Бар",
-  products: load("pi_products", defaultProducts),
-  systemRows: load("pi_system_rows", []),
-  inventory: load("pi_inventory", []),
+  products: load("moses_products", defaultProducts),
+  systemRows: load("moses_system_rows", []),
+  inventory: load("moses_inventory", []),
   selected: null,
   mode: "ml",
   value: "",
@@ -227,7 +228,7 @@ async function parseImportedFile(file){
     });
 
     state.systemRows = rows;
-    save("pi_system_rows", state.systemRows);
+    save("moses_system_rows", state.systemRows);
 
     // auto-create products from import
     rows.forEach(r=>{
@@ -244,7 +245,7 @@ async function parseImportedFile(file){
         });
       }
     });
-    save("pi_products", state.products);
+    save("moses_products", state.products);
     alert("Импортировано строк: " + rows.length);
     setScreen("inventory");
   };
@@ -288,7 +289,7 @@ function addInventory(next=false){
     unit: p.unit
   };
   state.inventory.unshift(row);
-  save("pi_inventory", state.inventory);
+  save("moses_inventory", state.inventory);
   state.selected = null;
   state.value = "";
   setScreen(next ? "inventory" : "history");
@@ -303,7 +304,7 @@ function exportCSV(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "prime-inventory.csv";
+  a.download = "moses-inventory.csv";
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -329,8 +330,8 @@ function warehouseTabs(){
 
 function screenHtml(){
   if(state.screen==="home") return `
-    <header><div class="logo">🍾</div><div><h1>Prime Inventory</h1><p class="muted">Инвентаризация бара</p></div></header>
-    <div class="hero"><h2>Новая инвентаризация</h2><p>Загрузи остатки, выбери склад и считай факт</p></div>
+    <header><div class="logo">🍾</div><div><h1>Moses Inventory</h1><p class="muted">Инвентаризация бара</p></div></header>
+    <div class="hero"><h2>Новая инвентаризация</h2><p>Загрузи остатки, считай факт и находи отклонения</p></div>
     <div class="grid">
       <div class="card" data-screen="import"><b>Импорт</b><p class="muted">Остатки XLSX/CSV</p></div>
       <div class="card" data-screen="inventory"><b>Считать</b><p class="muted">Инвентаризация</p></div>
@@ -341,6 +342,7 @@ function screenHtml(){
       <div class="row"><span>Товаров в базе</span><b>${state.products.length}</b></div>
       <div class="row"><span>Остатков загружено</span><b>${state.systemRows.length}</b></div>
       <div class="row"><span>Посчитано</span><b>${state.inventory.length}</b></div>
+      <div class="row"><span>Новые позиции</span><b>${state.inventory.filter(i => !systemQtyFor(i.name, i.warehouse)).length}</b></div>
     </div>`;
 
   if(state.screen==="import") return `
@@ -371,11 +373,12 @@ function screenHtml(){
         <div class="row"><span>Не посчитано</span><b>${uncounted}</b></div>
       </div>
       <input class="input" id="search" placeholder="Поиск товара" value="${state.search}">
+      <button class="secondary" data-screen="newProduct">+ Добавить товар, которого нет в остатках</button>
       <div class="list">${list.map(p=>{
         const sys = systemQtyFor(p.name,state.warehouse);
         const act = actualFor(p.name,state.warehouse);
         return `<div class="item" data-product="${p.id}">
-          <div class="item-main"><b>${p.name}</b><p>${p.category || "Без категории"} · система: ${Math.round(sys)} · факт: ${Math.round(act)}</p></div>
+          <div class="item-main"><b>${p.name}</b><p>${p.category || "Без категории"} · ${sys ? "система: " + Math.round(sys) : "нет в остатках"} · факт: ${Math.round(act)}</p></div>
           <span class="badge ${act? "green":"yellow"}">${act ? "Готово":"Считать"}</span>
         </div>`
       }).join("")}</div>`;
@@ -391,7 +394,7 @@ function screenHtml(){
       <div class="panel">
         <h2>${p.name}</h2>
         <p class="muted">${p.category || ""} · ${state.warehouse}</p>
-        <div class="row"><span>Система</span><b>${Math.round(sys)} ${p.unit==="pcs"?"шт":"мл"}</b></div>
+        <div class="row"><span>Система</span><b>${sys ? Math.round(sys) + " " + (p.unit==="pcs"?"шт":"мл") : "нет в остатках"}</b></div>
       </div>
       <div class="mode">${(p.modes||["ml"]).map(m=>`<button class="${state.mode===m?'active':''}" data-mode="${m}">${m==="weight"?"Вес":m==="pcs"?"Шт":"Мл"}</button>`).join("")}</div>
       ${state.mode==="ml" ? `<div class="quick"><button data-percent="25">25%</button><button data-percent="50">50%</button><button data-percent="75">75%</button><button data-percent="100">Full</button></div>` : ""}
@@ -407,6 +410,32 @@ function screenHtml(){
       <button class="secondary" id="saveOnly">Сохранить</button>`;
   }
 
+
+  if(state.screen==="newProduct") return `
+    ${topBar("Новый товар")}
+    <div class="warning">
+      Этот товар будет добавлен как новая позиция. В отклонениях он появится как <b>Новая</b>, потому что его нет в файле остатков.
+    </div>
+    <div class="form">
+      <label>Название товара</label>
+      <input class="input" id="npName" placeholder="Например, Aperol 1L">
+      <label>Категория</label>
+      <input class="input" id="npCategory" placeholder="Например, Ликёры">
+      <label>Единица учёта</label>
+      <select id="npUnit">
+        <option value="ml">мл</option>
+        <option value="pcs">шт</option>
+      </select>
+      <label>Объём бутылки / упаковки</label>
+      <input class="input" id="npVolume" type="number" placeholder="1000 / 750 / 700 / 500">
+      <label>Плотность, если будет ввод по весу</label>
+      <input class="input" id="npDensity" type="number" step="0.01" placeholder="0.94">
+      <label>Вес пустой тары, г</label>
+      <input class="input" id="npEmpty" type="number" placeholder="420">
+    </div>
+    <button class="primary" id="createProduct">Добавить и посчитать</button>
+  `;
+
   if(state.screen==="deviations"){
     const rows = state.products.map(p=>{
       const sys = systemQtyFor(p.name,state.warehouse);
@@ -420,7 +449,7 @@ function screenHtml(){
       <div class="list">${rows.map(r=>`
         <div class="item">
           <div class="item-main"><b>${r.p.name}</b><p>Система: ${Math.round(r.sys)} · Факт: ${Math.round(r.act)}</p></div>
-          <span class="badge ${statusClass(r.diff,r.sys)}">${Math.round(r.diff)}</span>
+          <span class="badge ${!r.sys && r.act ? "yellow" : statusClass(r.diff,r.sys)}">${!r.sys && r.act ? "Новая" : Math.round(r.diff)}</span>
         </div>`).join("") || `<div class="warning">Нет данных. Сначала загрузи остатки и посчитай факт.</div>`}</div>
       <br><button class="primary" id="export">Экспорт CSV</button>
       <button class="secondary" id="sendTg">Отправить в Telegram</button>`;
@@ -468,10 +497,29 @@ function bind(){
   if(exportBtn) exportBtn.onclick = exportCSV;
   const sendTg = document.getElementById("sendTg");
   if(sendTg) sendTg.onclick = sendTelegram;
+  const createProduct = document.getElementById("createProduct");
+  if(createProduct) createProduct.onclick = () => {
+    const name = document.getElementById("npName").value.trim();
+    if(!name){ alert("Введи название товара"); return; }
+    const unit = document.getElementById("npUnit").value;
+    const product = {
+      id: uid(),
+      name,
+      category: document.getElementById("npCategory").value.trim() || "Новая позиция",
+      unit,
+      volume: num(document.getElementById("npVolume").value) || (unit === "pcs" ? 1 : 1000),
+      density: num(document.getElementById("npDensity").value) || 1,
+      emptyWeight: num(document.getElementById("npEmpty").value) || 0,
+      modes: unit === "pcs" ? ["pcs"] : ["ml","weight"]
+    };
+    state.products.push(product);
+    save("moses_products", state.products);
+    selectProduct(product);
+  };
   const clearInv = document.getElementById("clearInventory");
-  if(clearInv) clearInv.onclick = () => { if(confirm("Очистить инвентаризацию?")){ state.inventory=[]; save("pi_inventory",[]); render(); } };
+  if(clearInv) clearInv.onclick = () => { if(confirm("Очистить инвентаризацию?")){ state.inventory=[]; save("moses_inventory",[]); render(); } };
   const clearSystem = document.getElementById("clearSystem");
-  if(clearSystem) clearSystem.onclick = () => { if(confirm("Очистить остатки?")){ state.systemRows=[]; save("pi_system_rows",[]); render(); } };
+  if(clearSystem) clearSystem.onclick = () => { if(confirm("Очистить остатки?")){ state.systemRows=[]; save("moses_system_rows",[]); render(); } };
 }
 
 window.addEventListener("error", function(e) {

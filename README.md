@@ -1,22 +1,18 @@
-# Prime Inventory Simple v2
+# Moses Inventory
 
-Исправлено:
-- ошибка `Identifier 'top' has already been declared`;
-- Telegram работает только при открытии через кнопку WebApp в боте;
-- для GitHub Pages нужен только `index.html`.
+Один файл для GitHub Pages.
 
-## Локальная проверка
+## Что делать, если товара нет в "Остатках на складах"
 
-Лучше не открывать файл прямо из архива. Сначала распакуй папку, потом открой `index.html`.
+В инвентаризации нажми:
+`+ Добавить товар, которого нет в остатках`
 
-## GitHub Pages
+После подсчёта он попадёт в отклонения как `Новая`.
 
-1. Создай репозиторий.
-2. Загрузи `index.html` в корень.
-3. Settings → Pages.
-4. Source: Deploy from branch.
-5. Branch: main, Folder: /root.
-6. Save.
+## Установка на GitHub Pages
 
-Адрес будет:
-https://USERNAME.github.io/REPOSITORY/
+1. Загрузи `index.html` в корень репозитория.
+2. Settings → Pages.
+3. Source: Deploy from branch.
+4. Branch: main, Folder: /root.
+5. Save.
