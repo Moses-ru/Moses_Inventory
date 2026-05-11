@@ -47,6 +47,16 @@
     nav button{border:0;background:transparent;color:#64748b;font-size:12px;padding:8px 2px}
     .hidden{display:none}
     .file{padding:18px;border:2px dashed #cbd5e1;border-radius:20px;background:white;text-align:center;margin-bottom:12px}
+    .mini{font-size:11px;color:#94a3b8;margin-top:3px}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+    .actions button{height:46px;border-radius:15px;border:1px solid #dbeafe;background:white;font-weight:800;color:#07194b}
+    .summary{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+    .summary .box{background:white;border-radius:18px;padding:14px;box-shadow:0 10px 30px rgba(15,35,80,.07);border:1px solid rgba(12,31,79,.06)}
+    .summary .box span{font-size:12px;color:#718096}.summary .box b{display:block;margin-top:6px;font-size:20px}
+    .chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:800;background:#eef2ff;color:#07194b;margin-top:6px;margin-right:4px}
+    .sticky{position:sticky;top:0;z-index:10;background:#f8fbff;padding-bottom:10px}
+    .smallBtn{height:38px;border-radius:12px;border:0;background:#eef2ff;color:#07194b;font-weight:800;padding:0 12px}
+    .empty{background:white;border-radius:18px;padding:22px;text-align:center;color:#718096}
     .file input{width:100%}
   </style>
 </head>
@@ -169,6 +179,104 @@ function statusClass(diff, system){
   return "red";
 }
 
+function countedKey(name, warehouse){ return norm(warehouse) + "::" + norm(name); }
+
+function countedKeys(){
+  const set = new Set();
+  state.inventory.forEach(r => {
+    if(r.status !== "skipped") set.add(countedKey(r.name, r.warehouse));
+  });
+  return set;
+}
+
+function productsForWarehouse(){
+  const q = norm(state.search);
+  const importedNames = state.systemRows
+    .filter(r => r.warehouse === state.warehouse)
+    .map(r => r.name);
+
+  const allNames = [...new Set([...importedNames, ...state.products.map(p => p.name)])];
+
+  return allNames.map(name => {
+    let p = state.products.find(x => norm(x.name) === norm(name));
+    if(!p) {
+      const r = state.systemRows.find(x => x.warehouse === state.warehouse && norm(x.name) === norm(name));
+      p = {
+        id: "auto_" + norm(name),
+        name,
+        category: r?.category || "Из остатков",
+        unit: norm(r?.unit)==="шт" ? "pcs" : "ml",
+        volume: norm(r?.unit)==="шт" ? 1 : 1000,
+        density: 1,
+        emptyWeight: 0,
+        modes: norm(r?.unit)==="шт" ? ["pcs"] : ["ml","weight"]
+      };
+    }
+    return p;
+  })
+  .filter(p => !q || norm(p.name + " " + p.category).includes(q))
+  .sort((a,b)=>{
+    const ka = countedKeys().has(countedKey(a.name,state.warehouse)) ? 1 : 0;
+    const kb = countedKeys().has(countedKey(b.name,state.warehouse)) ? 1 : 0;
+    return ka-kb || a.name.localeCompare(b.name);
+  });
+}
+
+function nextUncounted(){
+  return productsForWarehouse().find(p => !countedKeys().has(countedKey(p.name,state.warehouse)));
+}
+
+function selectNextUncounted(){
+  const p = nextUncounted();
+  if(!p){ alert("На этом складе всё посчитано"); return; }
+  selectProduct(p);
+}
+
+function markProduct(status){
+  const p = state.selected;
+  if(!p) return;
+  const row = {
+    id: uid(),
+    date: new Date().toLocaleString("ru-RU"),
+    warehouse: state.warehouse,
+    productId: p.id,
+    name: p.name,
+    category: p.category,
+    mode: status,
+    value: "",
+    actualQty: 0,
+    systemQty: systemQtyFor(p.name, state.warehouse),
+    diff: -systemQtyFor(p.name, state.warehouse),
+    unit: p.unit,
+    status,
+    comment: status === "skipped" ? "Пропущено" : "Проверить позже"
+  };
+  state.inventory.unshift(row);
+  save("moses_inventory", state.inventory);
+  state.selected = null;
+  setScreen("inventory");
+}
+
+function needReviewRows(){
+  return state.inventory.filter(r => {
+    if(r.status === "review") return true;
+    if(!r.systemQty && r.actualQty) return true;
+    if(r.systemQty && Math.abs(r.diff) / Math.abs(r.systemQty) > .2) return true;
+    return false;
+  });
+}
+
+function summaryData(){
+  const all = productsForWarehouse();
+  const counted = all.filter(p => countedKeys().has(countedKey(p.name,state.warehouse))).length;
+  const rows = state.inventory.filter(r => r.warehouse === state.warehouse);
+  const shortage = rows.filter(r => r.diff < 0).reduce((s,r)=>s+r.diff,0);
+  const surplus = rows.filter(r => r.diff > 0).reduce((s,r)=>s+r.diff,0);
+  const newItems = rows.filter(r=>!r.systemQty && r.actualQty).length;
+  const review = needReviewRows().filter(r=>r.warehouse===state.warehouse).length;
+  return {total: all.length, counted, left: Math.max(0, all.length-counted), shortage, surplus, newItems, review};
+}
+
 function setScreen(s){ state.screen=s; render(); }
 function setWarehouse(w){ state.warehouse=w; render(); }
 
@@ -272,8 +380,12 @@ function selectProduct(p){
 function addInventory(next=false){
   const p = state.selected;
   if(!p) return;
+  const inputValue = document.getElementById("value");
+  if(inputValue) state.value = inputValue.value;
   const actualQty = calculateActual(p, state.mode, state.value);
   const systemQty = systemQtyFor(p.name, state.warehouse);
+  const commentInput = document.getElementById("comment");
+  const comment = commentInput ? commentInput.value.trim() : "";
   const row = {
     id: uid(),
     date: new Date().toLocaleString("ru-RU"),
@@ -286,19 +398,30 @@ function addInventory(next=false){
     actualQty,
     systemQty,
     diff: actualQty - systemQty,
-    unit: p.unit
+    unit: p.unit,
+    status: "counted",
+    comment
   };
   state.inventory.unshift(row);
   save("moses_inventory", state.inventory);
   state.selected = null;
   state.value = "";
-  setScreen(next ? "inventory" : "history");
+  if(next){
+    const pNext = nextUncounted();
+    if(pNext) {
+      selectProduct(pNext);
+    } else {
+      setScreen("deviations");
+    }
+  } else {
+    setScreen("history");
+  }
 }
 
 function exportCSV(){
   const rows = [
-    ["Дата","Склад","Товар","Категория","Факт","Система","Отклонение","Режим","Ввод"].join(";"),
-    ...state.inventory.map(r=>[r.date,r.warehouse,r.name,r.category,r.actualQty,r.systemQty,r.diff,r.mode,r.value].join(";"))
+    ["Дата","Склад","Товар","Категория","Факт","Система","Отклонение","Режим","Ввод","Статус","Комментарий"].join(";"),
+    ...state.inventory.map(r=>[r.date,r.warehouse,r.name,r.category,r.actualQty,r.systemQty,r.diff,r.mode,r.value,r.status || "",r.comment || ""].join(";"))
   ];
   const blob = new Blob(["\ufeff"+rows.join("\n")], {type:"text/csv;charset=utf-8"});
   const url = URL.createObjectURL(blob);
@@ -330,19 +453,20 @@ function warehouseTabs(){
 
 function screenHtml(){
   if(state.screen==="home") return `
-    <header><div class="logo">🍾</div><div><h1>Moses Inventory</h1><p class="muted">Инвентаризация бара</p></div></header>
+    <header><div class="logo">🍾</div><div><h1>Moses Inventory</h1><p class="muted">Инвентаризация бара · v0.5</p></div></header>
     <div class="hero"><h2>Новая инвентаризация</h2><p>Загрузи остатки, считай факт и находи отклонения</p></div>
     <div class="grid">
       <div class="card" data-screen="import"><b>Импорт</b><p class="muted">Остатки XLSX/CSV</p></div>
       <div class="card" data-screen="inventory"><b>Считать</b><p class="muted">Инвентаризация</p></div>
       <div class="card" data-screen="deviations"><b>Отклонения</b><p class="muted">Система / факт</p></div>
-      <div class="card" data-screen="history"><b>История</b><p class="muted">Посчитанные позиции</p></div>
+      <div class="card" data-screen="review"><b>Проверить</b><p class="muted">Спорные позиции</p></div>
     </div>
     <div class="panel">
       <div class="row"><span>Товаров в базе</span><b>${state.products.length}</b></div>
       <div class="row"><span>Остатков загружено</span><b>${state.systemRows.length}</b></div>
       <div class="row"><span>Посчитано</span><b>${state.inventory.length}</b></div>
-      <div class="row"><span>Новые позиции</span><b>${state.inventory.filter(i => !systemQtyFor(i.name, i.warehouse)).length}</b></div>
+      <div class="row"><span>Новые позиции</span><b>${state.inventory.filter(i => !systemQtyFor(i.name, i.warehouse) && i.actualQty).length}</b></div>
+      <div class="row"><span>Проверить</span><b>${needReviewRows().length}</b></div>
     </div>`;
 
   if(state.screen==="import") return `
@@ -356,32 +480,35 @@ function screenHtml(){
   `;
 
   if(state.screen==="inventory"){
-    const q = norm(state.search);
-    const list = state.products
-      .filter(p => !q || norm(p.name+" "+p.category).includes(q))
-      .sort((a,b)=>{
-        const aa = actualFor(a.name,state.warehouse) > 0 ? 1 : 0;
-        const bb = actualFor(b.name,state.warehouse) > 0 ? 1 : 0;
-        return aa-bb || a.name.localeCompare(b.name);
-      });
-    const uncounted = list.filter(p=>actualFor(p.name,state.warehouse)===0).length;
+    const list = productsForWarehouse();
+    const sum = summaryData();
     return `
       ${topBar("Инвентаризация")}
-      ${warehouseTabs()}
-      <div class="panel">
-        <div class="row"><span>Склад</span><b>${state.warehouse}</b></div>
-        <div class="row"><span>Не посчитано</span><b>${uncounted}</b></div>
+      <div class="sticky">
+        ${warehouseTabs()}
+        <div class="summary">
+          <div class="box"><span>Посчитано</span><b>${sum.counted}/${sum.total}</b></div>
+          <div class="box"><span>Осталось</span><b>${sum.left}</b></div>
+        </div>
+        <button class="primary" id="nextItem">Следующий непосчитанный</button>
+        <input class="input" id="search" placeholder="Поиск товара" value="${state.search}">
+        <button class="secondary" id="searchBtn">Найти</button>
+        <button class="secondary" data-screen="newProduct">+ Добавить товар, которого нет в остатках</button>
       </div>
-      <input class="input" id="search" placeholder="Поиск товара" value="${state.search}">
-      <button class="secondary" data-screen="newProduct">+ Добавить товар, которого нет в остатках</button>
       <div class="list">${list.map(p=>{
         const sys = systemQtyFor(p.name,state.warehouse);
         const act = actualFor(p.name,state.warehouse);
+        const done = countedKeys().has(countedKey(p.name,state.warehouse));
+        const diff = act - sys;
         return `<div class="item" data-product="${p.id}">
-          <div class="item-main"><b>${p.name}</b><p>${p.category || "Без категории"} · ${sys ? "система: " + Math.round(sys) : "нет в остатках"} · факт: ${Math.round(act)}</p></div>
-          <span class="badge ${act? "green":"yellow"}">${act ? "Готово":"Считать"}</span>
+          <div class="item-main">
+            <b>${p.name}</b>
+            <p>${p.category || "Без категории"} · ${sys ? "система: " + Math.round(sys) : "нет в остатках"} · факт: ${Math.round(act)}</p>
+            ${done ? `<span class="chip ${statusClass(diff,sys)}">Откл: ${Math.round(diff)}</span>` : `<span class="chip yellow">Не считали</span>`}
+          </div>
+          <span class="badge ${done? "green":"yellow"}">${done ? "Готово":"Считать"}</span>
         </div>`
-      }).join("")}</div>`;
+      }).join("") || `<div class="empty">Ничего не найдено</div>`}</div>`;
   }
 
   if(state.screen==="add" && state.selected){
@@ -401,13 +528,20 @@ function screenHtml(){
       <div class="form">
         <label>${state.mode==="weight"?"Вес брутто, г":state.mode==="pcs"?"Количество, шт":"Миллилитры"}</label>
         <input class="input" id="value" type="number" value="${state.value}" placeholder="Введи значение">
+        <button class="secondary" id="calcBtn" type="button">Рассчитать</button>
+        <label>Комментарий</label>
+        <input class="input" id="comment" placeholder="Например: разбили, не нашли, на другом складе">
       </div>
       <div class="result">
         <span>Факт</span><b>${Math.round(actual)} ${p.unit==="pcs"?"шт":"мл"}</b>
         <p class="badge ${statusClass(diff,sys)}" style="display:inline-block;margin-top:10px">Отклонение: ${Math.round(diff)}</p>
       </div>
       <button class="primary" id="saveNext">Сохранить и следующий</button>
-      <button class="secondary" id="saveOnly">Сохранить</button>`;
+      <div class="actions">
+        <button id="saveOnly">Сохранить</button>
+        <button id="reviewLater">Проверить позже</button>
+      </div>
+      <button class="danger" id="skipItem">Пропустить</button>`;
   }
 
 
@@ -446,6 +580,12 @@ function screenHtml(){
     return `
       ${topBar("Отклонения")}
       ${warehouseTabs()}
+      <div class="summary">
+        <div class="box"><span>Недостача</span><b>${Math.round(summaryData().shortage)}</b></div>
+        <div class="box"><span>Излишки</span><b>${Math.round(summaryData().surplus)}</b></div>
+        <div class="box"><span>Новые</span><b>${summaryData().newItems}</b></div>
+        <div class="box"><span>Проверить</span><b>${summaryData().review}</b></div>
+      </div>
       <div class="list">${rows.map(r=>`
         <div class="item">
           <div class="item-main"><b>${r.p.name}</b><p>Система: ${Math.round(r.sys)} · Факт: ${Math.round(r.act)}</p></div>
@@ -455,12 +595,30 @@ function screenHtml(){
       <button class="secondary" id="sendTg">Отправить в Telegram</button>`;
   }
 
+
+  if(state.screen==="review"){
+    const rows = needReviewRows().filter(r=>r.warehouse===state.warehouse);
+    return `
+      ${topBar("Проверить")}
+      ${warehouseTabs()}
+      <div class="warning">Здесь крупные отклонения, новые позиции и товары, отмеченные вручную.</div>
+      <div class="list">${rows.map(r=>`
+        <div class="item">
+          <div class="item-main">
+            <b>${r.name}</b>
+            <p>${r.comment || "Без комментария"} · система: ${Math.round(r.systemQty)} · факт: ${Math.round(r.actualQty)}</p>
+          </div>
+          <span class="badge ${!r.systemQty && r.actualQty ? "yellow" : statusClass(r.diff,r.systemQty)}">${!r.systemQty && r.actualQty ? "Новая" : Math.round(r.diff)}</span>
+        </div>`).join("") || `<div class="empty">Пока нечего проверять</div>`}</div>
+    `;
+  }
+
   if(state.screen==="history") return `
     ${topBar("История")}
     <div class="list">${state.inventory.map(r=>`
       <div class="item">
-        <div class="item-main"><b>${r.name}</b><p>${r.date} · ${r.warehouse}</p></div>
-        <span class="badge">${Math.round(r.actualQty)}</span>
+        <div class="item-main"><b>${r.name}</b><p>${r.date} · ${r.warehouse}${r.comment ? " · " + r.comment : ""}</p></div>
+        <span class="badge ${r.status==="skipped"?"yellow":""}">${r.status==="skipped"?"Пропуск":Math.round(r.actualQty)}</span>
       </div>`).join("") || `<div class="warning">Пока ничего не посчитано.</div>`}</div>
     <br><button class="danger" id="clearInventory">Очистить инвентаризацию</button>`;
 }
@@ -484,15 +642,49 @@ function bind(){
     render();
   });
   const search = document.getElementById("search");
-  if(search) search.oninput = e => { state.search=e.target.value; render(); };
+  if(search) {
+    search.oninput = e => { state.search=e.target.value; };
+    search.onkeydown = e => {
+      if(e.key === "Enter") {
+        state.search = e.target.value;
+        render();
+      }
+    };
+  }
+  const searchBtn = document.getElementById("searchBtn");
+  if(searchBtn) searchBtn.onclick = () => {
+    const s = document.getElementById("search");
+    state.search = s ? s.value : state.search;
+    render();
+  };
   const value = document.getElementById("value");
-  if(value) value.oninput = e => { state.value=e.target.value; render(); };
+  if(value) {
+    value.oninput = e => { state.value=e.target.value; };
+    value.onkeydown = e => {
+      if(e.key === "Enter") {
+        state.value = e.target.value;
+        render();
+      }
+    };
+  }
+  const calcBtn = document.getElementById("calcBtn");
+  if(calcBtn) calcBtn.onclick = () => {
+    const v = document.getElementById("value");
+    state.value = v ? v.value : state.value;
+    render();
+  };
   const file = document.getElementById("fileInput");
   if(file) file.onchange = e => e.target.files[0] && parseImportedFile(e.target.files[0]);
+  const nextItem = document.getElementById("nextItem");
+  if(nextItem) nextItem.onclick = selectNextUncounted;
   const saveNext = document.getElementById("saveNext");
   if(saveNext) saveNext.onclick = () => addInventory(true);
   const saveOnly = document.getElementById("saveOnly");
   if(saveOnly) saveOnly.onclick = () => addInventory(false);
+  const reviewLater = document.getElementById("reviewLater");
+  if(reviewLater) reviewLater.onclick = () => markProduct("review");
+  const skipItem = document.getElementById("skipItem");
+  if(skipItem) skipItem.onclick = () => markProduct("skipped");
   const exportBtn = document.getElementById("export");
   if(exportBtn) exportBtn.onclick = exportCSV;
   const sendTg = document.getElementById("sendTg");
@@ -517,7 +709,14 @@ function bind(){
     selectProduct(product);
   };
   const clearInv = document.getElementById("clearInventory");
-  if(clearInv) clearInv.onclick = () => { if(confirm("Очистить инвентаризацию?")){ state.inventory=[]; save("moses_inventory",[]); render(); } };
+  if(clearInv) clearInv.onclick = () => {
+    const word = prompt("Чтобы очистить инвентаризацию, введи УДАЛИТЬ");
+    if(word === "УДАЛИТЬ"){
+      state.inventory=[];
+      save("moses_inventory",[]);
+      render();
+    }
+  };
   const clearSystem = document.getElementById("clearSystem");
   if(clearSystem) clearSystem.onclick = () => { if(confirm("Очистить остатки?")){ state.systemRows=[]; save("moses_system_rows",[]); render(); } };
 }
