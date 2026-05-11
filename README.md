@@ -1,19 +1,22 @@
-# Prime Inventory — простой запуск
+# Prime Inventory Simple v2
 
-Это готовая версия для GitHub Pages без npm и сборки.
+Исправлено:
+- ошибка `Identifier 'top' has already been declared`;
+- Telegram работает только при открытии через кнопку WebApp в боте;
+- для GitHub Pages нужен только `index.html`.
 
-## Как загрузить
+## Локальная проверка
 
-1. Распакуй архив.
-2. В GitHub создай репозиторий, например `prime-inventory`.
-3. Загрузи файл `index.html` в корень репозитория.
-4. Открой `Settings → Pages`.
-5. Source: `Deploy from branch`.
-6. Branch: `main`, Folder: `/root`.
-7. Нажми Save.
-8. Через минуту сайт будет по адресу:
-   `https://USERNAME.github.io/prime-inventory/`
+Лучше не открывать файл прямо из архива. Сначала распакуй папку, потом открой `index.html`.
 
-## Важно
+## GitHub Pages
 
-Загружать нужно именно файл `index.html`, не zip-архив.
+1. Создай репозиторий.
+2. Загрузи `index.html` в корень.
+3. Settings → Pages.
+4. Source: Deploy from branch.
+5. Branch: main, Folder: /root.
+6. Save.
+
+Адрес будет:
+https://USERNAME.github.io/REPOSITORY/

@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>Prime Inventory</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     *{box-sizing:border-box}
     body{margin:0;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f7fb;color:#0d1b3e}
@@ -52,11 +50,45 @@
   </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div style="padding:24px;font-family:Arial">Загрузка Prime Inventory...</div></div>
 
 <script>
-const tg = window.Telegram?.WebApp;
-try { tg?.ready(); tg?.expand(); } catch(e) {}
+let tg = null;
+
+function initTelegram() {
+  try {
+    tg = window.Telegram?.WebApp || null;
+    tg?.ready();
+    tg?.expand();
+  } catch(e) {}
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      existing.addEventListener("load", resolve);
+      existing.addEventListener("error", reject);
+      if (existing.dataset.loaded === "true") resolve();
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.onload = () => {
+      s.dataset.loaded = "true";
+      resolve();
+    };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+window.addEventListener("load", () => {
+  loadScript("https://telegram.org/js/telegram-web-app.js")
+    .then(initTelegram)
+    .catch(() => {});
+});
 
 const warehousesDefault = ["Бар","Бэк","Холодильник","Морозилка","Склад"];
 
@@ -139,7 +171,17 @@ function statusClass(diff, system){
 function setScreen(s){ state.screen=s; render(); }
 function setWarehouse(w){ state.warehouse=w; render(); }
 
-function parseImportedFile(file){
+async function parseImportedFile(file){
+  if (!window.XLSX) {
+    alert("Загружаю модуль Excel. Нажми OK и подожди пару секунд.");
+    try {
+      await loadScript("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js");
+    } catch (e) {
+      alert("Не удалось загрузить модуль Excel. Проверь интернет или открой через GitHub Pages.");
+      return;
+    }
+  }
+
   const reader = new FileReader();
   reader.onload = function(e){
     const data = new Uint8Array(e.target.result);
@@ -267,7 +309,7 @@ function exportCSV(){
 }
 
 function sendTelegram(){
-  if(!tg){ alert("Открой WebApp внутри Telegram"); return; }
+  if(!tg){ alert("Отправка в Telegram работает только внутри WebApp, открытого через кнопку бота."); return; }
   tg.sendData(JSON.stringify(state.inventory));
 }
 
@@ -277,7 +319,7 @@ function render(){
   bind();
 }
 
-function top(title){
+function topBar(title){
   return `<div class="top"><button data-screen="home">←</button><h2>${title}</h2><span></span></div>`;
 }
 
@@ -302,7 +344,7 @@ function screenHtml(){
     </div>`;
 
   if(state.screen==="import") return `
-    ${top("Импорт остатков")}
+    ${topBar("Импорт остатков")}
     <div class="file">
       <p><b>Загрузи файл “Остатки на складах”</b></p>
       <p class="muted">Поддерживается XLSX из iiko</p><br>
@@ -322,7 +364,7 @@ function screenHtml(){
       });
     const uncounted = list.filter(p=>actualFor(p.name,state.warehouse)===0).length;
     return `
-      ${top("Инвентаризация")}
+      ${topBar("Инвентаризация")}
       ${warehouseTabs()}
       <div class="panel">
         <div class="row"><span>Склад</span><b>${state.warehouse}</b></div>
@@ -345,7 +387,7 @@ function screenHtml(){
     const sys = systemQtyFor(p.name,state.warehouse);
     const diff = actual - sys;
     return `
-      ${top("Добавление")}
+      ${topBar("Добавление")}
       <div class="panel">
         <h2>${p.name}</h2>
         <p class="muted">${p.category || ""} · ${state.warehouse}</p>
@@ -373,7 +415,7 @@ function screenHtml(){
       return {p,sys,act,diff};
     }).filter(r=>r.sys || r.act).sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
     return `
-      ${top("Отклонения")}
+      ${topBar("Отклонения")}
       ${warehouseTabs()}
       <div class="list">${rows.map(r=>`
         <div class="item">
@@ -385,7 +427,7 @@ function screenHtml(){
   }
 
   if(state.screen==="history") return `
-    ${top("История")}
+    ${topBar("История")}
     <div class="list">${state.inventory.map(r=>`
       <div class="item">
         <div class="item-main"><b>${r.name}</b><p>${r.date} · ${r.warehouse}</p></div>
@@ -432,7 +474,25 @@ function bind(){
   if(clearSystem) clearSystem.onclick = () => { if(confirm("Очистить остатки?")){ state.systemRows=[]; save("pi_system_rows",[]); render(); } };
 }
 
-render();
+window.addEventListener("error", function(e) {
+  const root = document.getElementById("root");
+  if (root && (!root.innerText || root.innerText.includes("Загрузка"))) {
+    root.innerHTML = `<div style="padding:24px;font-family:Arial;color:#111">
+      <h2>Ошибка запуска</h2>
+      <p>${e.message}</p>
+      <p>Попробуй открыть файл через GitHub Pages или локальный сервер.</p>
+    </div>`;
+  }
+});
+
+try {
+  render();
+} catch(e) {
+  document.getElementById("root").innerHTML = `<div style="padding:24px;font-family:Arial;color:#111">
+    <h2>Ошибка запуска</h2>
+    <p>${e.message}</p>
+  </div>`;
+}
 </script>
 </body>
 </html>
