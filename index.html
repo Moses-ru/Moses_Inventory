@@ -1,12 +1,438 @@
 <!doctype html>
 <html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Prime Inventory</title>
-    <script type="module" crossorigin src="./assets/index-arGuBPaP.js"></script>
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Prime Inventory</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f7fb;color:#0d1b3e}
+    .app{max-width:430px;margin:0 auto;min-height:100vh;padding:18px 14px 92px;background:radial-gradient(circle at top left,#edf4ff,transparent 34%),#f8fbff}
+    header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+    .logo{width:46px;height:46px;border-radius:16px;background:#07194b;color:white;display:grid;place-items:center;font-size:24px}
+    h1,h2,h3,p{margin:0}
+    h1{font-size:20px}.muted{color:#718096;font-size:13px;margin-top:4px}
+    .hero{background:linear-gradient(135deg,#07194b,#1d4ed8);color:white;border-radius:24px;padding:22px;margin-bottom:14px;box-shadow:0 18px 40px rgba(7,25,75,.22)}
+    .hero p{color:rgba(255,255,255,.75);margin-top:6px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+    .card,.panel,.item,.form,.tabs,.result,.warning{background:white;border-radius:18px;box-shadow:0 10px 30px rgba(15,35,80,.07);border:1px solid rgba(12,31,79,.06)}
+    .card{padding:16px;min-height:96px}
+    .card b{display:block;margin-bottom:6px}
+    .panel,.form,.result,.warning{padding:16px;margin-bottom:14px}
+    .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #edf2f7}
+    .row:last-child{border-bottom:0}
+    button{font-family:inherit}
+    .primary,.secondary,.danger{width:100%;height:52px;border:0;border-radius:16px;font-weight:800;font-size:15px;margin-bottom:10px}
+    .primary{background:#07194b;color:white}.secondary{background:white;color:#07194b;border:1px solid #dbeafe}.danger{background:white;color:#e11d48;border:1px solid #fecdd3}
+    .input,select{width:100%;height:52px;border:1px solid #e2e8f0;border-radius:16px;padding:0 14px;font-size:16px;background:white;margin-bottom:10px}
+    label{font-size:13px;color:#718096;display:block;margin:10px 0 6px}
+    .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+    .top button{border:0;background:transparent;font-size:24px}.top h2{font-size:17px}
+    .tabs{display:flex;overflow:auto;gap:8px;padding:8px;margin-bottom:12px}
+    .tab{white-space:nowrap;border:0;border-radius:14px;padding:11px 14px;background:#eef2ff;color:#35415e;font-weight:700}
+    .tab.active{background:#07194b;color:white}
+    .list{display:flex;flex-direction:column;gap:10px}
+    .item{padding:14px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .item-main{min-width:0}.item b{font-size:14px}.item p{font-size:12px;color:#718096;margin-top:4px;overflow:hidden;text-overflow:ellipsis}
+    .badge{border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;background:#edf2ff;color:#07194b}
+    .red{background:#fee2e2;color:#991b1b}.green{background:#dcfce7;color:#166534}.yellow{background:#fef3c7;color:#92400e}
+    .mode{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+    .mode button{height:48px;border-radius:15px;border:1px solid #dbeafe;background:white;font-weight:800}
+    .mode button.active{background:#07194b;color:white}
+    .quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+    .quick button{height:42px;border-radius:14px;border:0;background:#edf2ff;font-weight:800;color:#07194b}
+    .result{text-align:center;background:#edf4ff}.result b{display:block;font-size:34px;margin-top:4px}
+    nav{position:fixed;left:50%;bottom:0;transform:translateX(-50%);max-width:430px;width:100%;display:grid;grid-template-columns:repeat(4,1fr);background:rgba(255,255,255,.96);border-top:1px solid #e5e7eb;padding:8px 6px 16px}
+    nav button{border:0;background:transparent;color:#64748b;font-size:12px;padding:8px 2px}
+    .hidden{display:none}
+    .file{padding:18px;border:2px dashed #cbd5e1;border-radius:20px;background:white;text-align:center;margin-bottom:12px}
+    .file input{width:100%}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+try { tg?.ready(); tg?.expand(); } catch(e) {}
+
+const warehousesDefault = ["Бар","Бэк","Холодильник","Морозилка","Склад"];
+
+const defaultProducts = [
+  {id:"p1", name:"Beefeater Gin", category:"Джин", unit:"ml", volume:1000, density:0.94, emptyWeight:420, modes:["weight","ml"]},
+  {id:"p2", name:"Jameson", category:"Виски", unit:"ml", volume:700, density:0.94, emptyWeight:390, modes:["weight","ml"]},
+  {id:"p3", name:"Prosecco", category:"Вино", unit:"ml", volume:750, density:0.99, emptyWeight:500, modes:["ml","pcs"]},
+  {id:"p4", name:"Сироп Маракуйя", category:"Сиропы", unit:"ml", volume:1000, density:1.25, emptyWeight:250, modes:["weight","ml"]},
+  {id:"p5", name:"Red Bull", category:"Напитки", unit:"pcs", volume:250, density:1, emptyWeight:0, modes:["pcs"]}
+];
+
+const state = {
+  screen: "home",
+  warehouse: "Бар",
+  products: load("pi_products", defaultProducts),
+  systemRows: load("pi_system_rows", []),
+  inventory: load("pi_inventory", []),
+  selected: null,
+  mode: "ml",
+  value: "",
+  search: ""
+};
+
+function save(key, data){ localStorage.setItem(key, JSON.stringify(data)); }
+function load(key, fallback){ try { return JSON.parse(localStorage.getItem(key)) ?? fallback } catch(e){ return fallback } }
+function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36) }
+function norm(s){ return String(s||"").toLowerCase().replace(/[ё]/g,"е").replace(/[^a-zа-я0-9]+/g," ").trim(); }
+function num(v){ return Number(String(v??"").replace(",", ".")) || 0; }
+
+function warehouses(){
+  const fromRows = [...new Set(state.systemRows.map(r=>r.warehouse).filter(Boolean))];
+  return [...new Set([...warehousesDefault, ...fromRows])];
+}
+
+function systemQtyFor(productName, warehouse){
+  const n = norm(productName);
+  return state.systemRows
+    .filter(r => r.warehouse === warehouse && norm(r.name) === n)
+    .reduce((s,r)=>s+num(r.qtyMl || r.qty || 0),0);
+}
+
+function actualFor(productName, warehouse){
+  const n = norm(productName);
+  return state.inventory
+    .filter(r => r.warehouse === warehouse && norm(r.name) === n)
+    .reduce((s,r)=>s+num(r.actualQty),0);
+}
+
+function convertProductRowToMl(row){
+  const unit = norm(row.unit);
+  let qty = Math.abs(num(row.qty));
+  if(unit === "л" || unit === "l") return qty * 1000;
+  if(unit === "мл" || unit === "ml") return qty;
+  return qty;
+}
+
+function calculateActual(product, mode, value){
+  const v = num(value);
+  if(mode === "weight"){
+    const net = v - num(product.emptyWeight);
+    if(net <= 0) return 0;
+    return Math.round(net / num(product.density || 1));
+  }
+  if(mode === "pcs"){
+    return Math.round(v * num(product.volume || 1));
+  }
+  if(mode === "kg"){
+    return v;
+  }
+  return v;
+}
+
+function statusClass(diff, system){
+  const abs = Math.abs(diff);
+  if(abs < 1) return "green";
+  if(system && abs / Math.abs(system) <= .1) return "yellow";
+  return "red";
+}
+
+function setScreen(s){ state.screen=s; render(); }
+function setWarehouse(w){ state.warehouse=w; render(); }
+
+function parseImportedFile(file){
+  const reader = new FileReader();
+  reader.onload = function(e){
+    const data = new Uint8Array(e.target.result);
+    const wb = XLSX.read(data, {type:"array"});
+    const rows = [];
+    wb.SheetNames.forEach(sheetName=>{
+      const ws = wb.Sheets[sheetName];
+      const matrix = XLSX.utils.sheet_to_json(ws, {header:1, defval:""});
+      let currentWarehouse = sheetName;
+      let headerIndex = -1;
+      let headers = [];
+      matrix.forEach((arr, idx)=>{
+        const joined = arr.join(" ");
+        const wh = joined.match(/Склад:\s*(.+)/i);
+        if(wh) currentWarehouse = wh[1].trim();
+        if(arr.some(c=>norm(c)==="наименование") && arr.some(c=>norm(c).includes("количество"))){
+          headerIndex = idx;
+          headers = arr.map(norm);
+          return;
+        }
+        if(headerIndex >= 0 && idx > headerIndex){
+          const nameIndex = headers.findIndex(h=>h==="наименование");
+          const unitIndex = headers.findIndex(h=>h.includes("ед") && h.includes("измер"));
+          const qtyIndex = headers.findIndex(h=>h==="количество" || h.includes("количество"));
+          const catIndex = headers.findIndex(h=>h==="категория");
+          const costIndex = headers.findIndex(h=>h.includes("себестоимость за ед"));
+          const name = arr[nameIndex];
+          if(!name || norm(name).includes("итого")) return;
+          const unit = arr[unitIndex] || "";
+          const qty = arr[qtyIndex] || 0;
+          rows.push({
+            id: uid(),
+            warehouse: cleanWarehouse(currentWarehouse),
+            name: String(name).trim(),
+            category: String(arr[catIndex] || "").trim(),
+            unit,
+            qty: Math.abs(num(qty)),
+            qtyMl: convertProductRowToMl({unit, qty}),
+            cost: num(arr[costIndex])
+          });
+        }
+      });
+    });
+
+    state.systemRows = rows;
+    save("pi_system_rows", state.systemRows);
+
+    // auto-create products from import
+    rows.forEach(r=>{
+      if(!state.products.some(p=>norm(p.name)===norm(r.name))){
+        state.products.push({
+          id: uid(),
+          name: r.name,
+          category: r.category || "Без категории",
+          unit: norm(r.unit)==="шт" ? "pcs" : "ml",
+          volume: norm(r.unit)==="шт" ? 1 : 1000,
+          density: 1,
+          emptyWeight: 0,
+          modes: norm(r.unit)==="шт" ? ["pcs"] : ["ml","weight"]
+        });
+      }
+    });
+    save("pi_products", state.products);
+    alert("Импортировано строк: " + rows.length);
+    setScreen("inventory");
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function cleanWarehouse(w){
+  const s = String(w||"").replace(/Склад:/i,"").trim();
+  if(/бар/i.test(s)) return "Бар";
+  if(/бэк|бек/i.test(s)) return "Бэк";
+  if(/холод/i.test(s)) return "Холодильник";
+  if(/мороз/i.test(s)) return "Морозилка";
+  if(/склад/i.test(s)) return "Склад";
+  return s || "Бар";
+}
+
+function selectProduct(p){
+  state.selected = p;
+  state.mode = p.modes?.[0] || "ml";
+  state.value = "";
+  setScreen("add");
+}
+
+function addInventory(next=false){
+  const p = state.selected;
+  if(!p) return;
+  const actualQty = calculateActual(p, state.mode, state.value);
+  const systemQty = systemQtyFor(p.name, state.warehouse);
+  const row = {
+    id: uid(),
+    date: new Date().toLocaleString("ru-RU"),
+    warehouse: state.warehouse,
+    productId: p.id,
+    name: p.name,
+    category: p.category,
+    mode: state.mode,
+    value: state.value,
+    actualQty,
+    systemQty,
+    diff: actualQty - systemQty,
+    unit: p.unit
+  };
+  state.inventory.unshift(row);
+  save("pi_inventory", state.inventory);
+  state.selected = null;
+  state.value = "";
+  setScreen(next ? "inventory" : "history");
+}
+
+function exportCSV(){
+  const rows = [
+    ["Дата","Склад","Товар","Категория","Факт","Система","Отклонение","Режим","Ввод"].join(";"),
+    ...state.inventory.map(r=>[r.date,r.warehouse,r.name,r.category,r.actualQty,r.systemQty,r.diff,r.mode,r.value].join(";"))
+  ];
+  const blob = new Blob(["\ufeff"+rows.join("\n")], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "prime-inventory.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function sendTelegram(){
+  if(!tg){ alert("Открой WebApp внутри Telegram"); return; }
+  tg.sendData(JSON.stringify(state.inventory));
+}
+
+function render(){
+  const root = document.getElementById("root");
+  root.innerHTML = `<div class="app">${screenHtml()}${navHtml()}</div>`;
+  bind();
+}
+
+function top(title){
+  return `<div class="top"><button data-screen="home">←</button><h2>${title}</h2><span></span></div>`;
+}
+
+function warehouseTabs(){
+  return `<div class="tabs">${warehouses().map(w=>`<button class="tab ${w===state.warehouse?'active':''}" data-warehouse="${w}">${w}</button>`).join("")}</div>`;
+}
+
+function screenHtml(){
+  if(state.screen==="home") return `
+    <header><div class="logo">🍾</div><div><h1>Prime Inventory</h1><p class="muted">Инвентаризация бара</p></div></header>
+    <div class="hero"><h2>Новая инвентаризация</h2><p>Загрузи остатки, выбери склад и считай факт</p></div>
+    <div class="grid">
+      <div class="card" data-screen="import"><b>Импорт</b><p class="muted">Остатки XLSX/CSV</p></div>
+      <div class="card" data-screen="inventory"><b>Считать</b><p class="muted">Инвентаризация</p></div>
+      <div class="card" data-screen="deviations"><b>Отклонения</b><p class="muted">Система / факт</p></div>
+      <div class="card" data-screen="history"><b>История</b><p class="muted">Посчитанные позиции</p></div>
+    </div>
+    <div class="panel">
+      <div class="row"><span>Товаров в базе</span><b>${state.products.length}</b></div>
+      <div class="row"><span>Остатков загружено</span><b>${state.systemRows.length}</b></div>
+      <div class="row"><span>Посчитано</span><b>${state.inventory.length}</b></div>
+    </div>`;
+
+  if(state.screen==="import") return `
+    ${top("Импорт остатков")}
+    <div class="file">
+      <p><b>Загрузи файл “Остатки на складах”</b></p>
+      <p class="muted">Поддерживается XLSX из iiko</p><br>
+      <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
+    </div>
+    <button class="danger" id="clearSystem">Очистить загруженные остатки</button>
+  `;
+
+  if(state.screen==="inventory"){
+    const q = norm(state.search);
+    const list = state.products
+      .filter(p => !q || norm(p.name+" "+p.category).includes(q))
+      .sort((a,b)=>{
+        const aa = actualFor(a.name,state.warehouse) > 0 ? 1 : 0;
+        const bb = actualFor(b.name,state.warehouse) > 0 ? 1 : 0;
+        return aa-bb || a.name.localeCompare(b.name);
+      });
+    const uncounted = list.filter(p=>actualFor(p.name,state.warehouse)===0).length;
+    return `
+      ${top("Инвентаризация")}
+      ${warehouseTabs()}
+      <div class="panel">
+        <div class="row"><span>Склад</span><b>${state.warehouse}</b></div>
+        <div class="row"><span>Не посчитано</span><b>${uncounted}</b></div>
+      </div>
+      <input class="input" id="search" placeholder="Поиск товара" value="${state.search}">
+      <div class="list">${list.map(p=>{
+        const sys = systemQtyFor(p.name,state.warehouse);
+        const act = actualFor(p.name,state.warehouse);
+        return `<div class="item" data-product="${p.id}">
+          <div class="item-main"><b>${p.name}</b><p>${p.category || "Без категории"} · система: ${Math.round(sys)} · факт: ${Math.round(act)}</p></div>
+          <span class="badge ${act? "green":"yellow"}">${act ? "Готово":"Считать"}</span>
+        </div>`
+      }).join("")}</div>`;
+  }
+
+  if(state.screen==="add" && state.selected){
+    const p = state.selected;
+    const actual = calculateActual(p,state.mode,state.value);
+    const sys = systemQtyFor(p.name,state.warehouse);
+    const diff = actual - sys;
+    return `
+      ${top("Добавление")}
+      <div class="panel">
+        <h2>${p.name}</h2>
+        <p class="muted">${p.category || ""} · ${state.warehouse}</p>
+        <div class="row"><span>Система</span><b>${Math.round(sys)} ${p.unit==="pcs"?"шт":"мл"}</b></div>
+      </div>
+      <div class="mode">${(p.modes||["ml"]).map(m=>`<button class="${state.mode===m?'active':''}" data-mode="${m}">${m==="weight"?"Вес":m==="pcs"?"Шт":"Мл"}</button>`).join("")}</div>
+      ${state.mode==="ml" ? `<div class="quick"><button data-percent="25">25%</button><button data-percent="50">50%</button><button data-percent="75">75%</button><button data-percent="100">Full</button></div>` : ""}
+      <div class="form">
+        <label>${state.mode==="weight"?"Вес брутто, г":state.mode==="pcs"?"Количество, шт":"Миллилитры"}</label>
+        <input class="input" id="value" type="number" value="${state.value}" placeholder="Введи значение">
+      </div>
+      <div class="result">
+        <span>Факт</span><b>${Math.round(actual)} ${p.unit==="pcs"?"шт":"мл"}</b>
+        <p class="badge ${statusClass(diff,sys)}" style="display:inline-block;margin-top:10px">Отклонение: ${Math.round(diff)}</p>
+      </div>
+      <button class="primary" id="saveNext">Сохранить и следующий</button>
+      <button class="secondary" id="saveOnly">Сохранить</button>`;
+  }
+
+  if(state.screen==="deviations"){
+    const rows = state.products.map(p=>{
+      const sys = systemQtyFor(p.name,state.warehouse);
+      const act = actualFor(p.name,state.warehouse);
+      const diff = act - sys;
+      return {p,sys,act,diff};
+    }).filter(r=>r.sys || r.act).sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
+    return `
+      ${top("Отклонения")}
+      ${warehouseTabs()}
+      <div class="list">${rows.map(r=>`
+        <div class="item">
+          <div class="item-main"><b>${r.p.name}</b><p>Система: ${Math.round(r.sys)} · Факт: ${Math.round(r.act)}</p></div>
+          <span class="badge ${statusClass(r.diff,r.sys)}">${Math.round(r.diff)}</span>
+        </div>`).join("") || `<div class="warning">Нет данных. Сначала загрузи остатки и посчитай факт.</div>`}</div>
+      <br><button class="primary" id="export">Экспорт CSV</button>
+      <button class="secondary" id="sendTg">Отправить в Telegram</button>`;
+  }
+
+  if(state.screen==="history") return `
+    ${top("История")}
+    <div class="list">${state.inventory.map(r=>`
+      <div class="item">
+        <div class="item-main"><b>${r.name}</b><p>${r.date} · ${r.warehouse}</p></div>
+        <span class="badge">${Math.round(r.actualQty)}</span>
+      </div>`).join("") || `<div class="warning">Пока ничего не посчитано.</div>`}</div>
+    <br><button class="danger" id="clearInventory">Очистить инвентаризацию</button>`;
+}
+
+function navHtml(){
+  return `<nav>
+    <button data-screen="home">Главная</button>
+    <button data-screen="import">Импорт</button>
+    <button data-screen="inventory">Считать</button>
+    <button data-screen="deviations">Отклонения</button>
+  </nav>`;
+}
+
+function bind(){
+  document.querySelectorAll("[data-screen]").forEach(el=>el.onclick=()=>setScreen(el.dataset.screen));
+  document.querySelectorAll("[data-warehouse]").forEach(el=>el.onclick=()=>setWarehouse(el.dataset.warehouse));
+  document.querySelectorAll("[data-product]").forEach(el=>el.onclick=()=>selectProduct(state.products.find(p=>p.id===el.dataset.product)));
+  document.querySelectorAll("[data-mode]").forEach(el=>el.onclick=()=>{state.mode=el.dataset.mode; state.value=""; render();});
+  document.querySelectorAll("[data-percent]").forEach(el=>el.onclick=()=>{
+    state.value = Math.round(num(state.selected.volume || 1000) * num(el.dataset.percent) / 100);
+    render();
+  });
+  const search = document.getElementById("search");
+  if(search) search.oninput = e => { state.search=e.target.value; render(); };
+  const value = document.getElementById("value");
+  if(value) value.oninput = e => { state.value=e.target.value; render(); };
+  const file = document.getElementById("fileInput");
+  if(file) file.onchange = e => e.target.files[0] && parseImportedFile(e.target.files[0]);
+  const saveNext = document.getElementById("saveNext");
+  if(saveNext) saveNext.onclick = () => addInventory(true);
+  const saveOnly = document.getElementById("saveOnly");
+  if(saveOnly) saveOnly.onclick = () => addInventory(false);
+  const exportBtn = document.getElementById("export");
+  if(exportBtn) exportBtn.onclick = exportCSV;
+  const sendTg = document.getElementById("sendTg");
+  if(sendTg) sendTg.onclick = sendTelegram;
+  const clearInv = document.getElementById("clearInventory");
+  if(clearInv) clearInv.onclick = () => { if(confirm("Очистить инвентаризацию?")){ state.inventory=[]; save("pi_inventory",[]); render(); } };
+  const clearSystem = document.getElementById("clearSystem");
+  if(clearSystem) clearSystem.onclick = () => { if(confirm("Очистить остатки?")){ state.systemRows=[]; save("pi_system_rows",[]); render(); } };
+}
+
+render();
+</script>
+</body>
 </html>
